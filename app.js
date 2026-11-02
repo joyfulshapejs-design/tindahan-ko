@@ -8,7 +8,8 @@
   var KEY_SETTINGS = "sari_settings_v1";
   var KEY_GUARD = "sari_pinguard_v1";       // wrong-PIN counter, so guessing gets slower
   var DAY_MS = 86400000;
-  var APP_VERSION = "3.0";                  // keep in step with CACHE in sw.js
+  var APP_VERSION = "3.1";                  // keep in step with CACHE in sw.js
+  var STORAGE_LIMIT = 5000000;              // browsers allow roughly 5 MB of saved text per website
 
   var CATEGORIES = ["Vegetables", "Leafy Greens", "Roots & Spices", "Canned Goods", "Others"];
 
@@ -437,7 +438,11 @@
         ' <button class="btn small" id="goBackup">Back up now</button></div>'
       : "";
 
-    $("view").innerHTML = backupNote +
+    var fullNote = storageNearlyFull()
+      ? '<div class="backup-note">🗄 Storage is almost full. <button class="btn small" id="goStorage">See details</button></div>'
+      : "";
+
+    $("view").innerHTML = backupNote + fullNote +
       '<div class="stats">' +
         '<div class="stat wide"><div class="label">💰 Total sales today</div><div class="num">' + peso(revenue) + "</div></div>" +
         '<div class="stat profit' + (profit < 0 ? " loss" : "") + '"><div class="label">📈 Profit today</div><div class="num">' + peso(profit) + "</div></div>" +
@@ -452,6 +457,7 @@
 
     $("goSell").addEventListener("click", function () { currentTab = "sell"; render(); });
     if (staleBackup) $("goBackup").addEventListener("click", function () { currentTab = "settings"; render(); });
+    if (fullNote) $("goStorage").addEventListener("click", function () { currentTab = "settings"; render(); });
   }
 
   /* ---------- Settings screen ---------- */
@@ -467,6 +473,7 @@
         '<input id="setName" maxlength="40" value="' + esc(settings.storeName) + '">' +
         '<button class="btn" id="saveName" style="margin-top:10px">Save name</button></div>' +
       pinCardHtml() +
+      storageCardHtml() +
       '<div class="card"><h2 class="alerts-title" style="margin-top:0">💾 Backup</h2>' +
         '<div class="prices">Last backup: <b>' + esc(last) + "</b></div>" +
         '<p>Saves your products, sales, spoilage and history in one file. Keep it somewhere safe, like sending it to yourself.</p>' +
@@ -500,6 +507,37 @@
       var p = e.target.closest("button[data-pin]");
       if (p) pinAction(p.dataset.pin);
     };
+  }
+
+  /* ----- storage meter ----- */
+  function storageUsed() {
+    var total = 0;
+    [KEY_PRODUCTS, KEY_SALES, KEY_LOSSES, KEY_SETTINGS, KEY_GUARD].forEach(function (k) {
+      try {
+        var v = localStorage.getItem(k);
+        if (v) total += k.length + v.length;
+      } catch (e) { /* storage blocked: count nothing */ }
+    });
+    return total;
+  }
+  function storageNearlyFull() { return storageUsed() / STORAGE_LIMIT >= 0.8; }
+  function fmtSize(chars) {
+    return chars < 1048576 ? Math.max(1, Math.round(chars / 1024)) + " KB" : (chars / 1048576).toFixed(1) + " MB";
+  }
+  function storageCardHtml() {
+    var used = storageUsed();
+    var pct = Math.min(100, used / STORAGE_LIMIT * 100);
+    var avg = sales.length ? JSON.stringify(sales).length / sales.length : 141;
+    var room = Math.max(0, Math.floor((STORAGE_LIMIT - used) / (avg + 1)));
+    var level = pct >= 85 ? "bad" : pct >= 60 ? "warn" : "good";
+    return '<div class="card"><h2 class="alerts-title" style="margin-top:0">🗄 Storage used</h2>' +
+      '<div><b>' + fmtSize(used) + "</b> of about 5 MB (" + (pct < 1 ? "less than 1" : Math.round(pct)) + "%)</div>" +
+      '<div class="meter ' + level + '"><span style="width:' + Math.max(1, pct) + '%"></span></div>' +
+      '<div class="prices">' + products.length + " products · " + sales.length + " sales · " + losses.length + " spoilage entries</div>" +
+      '<div class="prices">Room for about ' + room.toLocaleString() + " more sales.</div>" +
+      (pct >= 80
+        ? '<p style="color:var(--bad);font-weight:700">Almost full. Download a backup now. New sales may stop saving when it is full.</p>'
+        : "") + "</div>";
   }
 
   /* ----- spreadsheet export (CSV) ----- */

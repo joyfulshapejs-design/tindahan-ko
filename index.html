@@ -160,6 +160,11 @@
     display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
   }
 
+  .meter { height: 14px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 10px 0; }
+  .meter span { display: block; height: 100%; background: var(--good); border-radius: 999px; }
+  .meter.warn span { background: #d9822b; }
+  .meter.bad span { background: var(--bad); }
+
   /* home screen */
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat {
