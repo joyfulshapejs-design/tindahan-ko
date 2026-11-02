@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The app only talks to its own files: no outside scripts, fonts or servers, and no data leaves the device. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#c8501a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tindahan">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Tindahan Ko</title>
+<style>
+  :root {
+    --bg: #fdf8ef;
+    --card: #ffffff;
+    --ink: #2b2118;
+    --muted: #6f6256;
+    --line: #e8dcc8;
+    --brand: #c8501a;
+    --brand-dark: #9c3d12;
+    --good: #1d7a3f;
+    --good-bg: #e3f4e8;
+    --warn: #b45309;
+    --warn-bg: #fdecc8;
+    --bad: #b3261e;
+    --bad-bg: #fbe3e1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 18px;
+    background: var(--bg);
+    color: var(--ink);
+    padding-bottom: 84px;
+  }
+  [hidden] { display: none !important; }
+  header {
+    background: var(--brand);
+    color: #fff;
+    padding: 16px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  header h1 { margin: 0; font-size: 24px; min-width: 0; overflow-wrap: anywhere; }
+  .lock-btn {
+    flex: none; width: 44px; height: 44px; border: 0; border-radius: 10px;
+    background: rgba(255,255,255,.22); color: #fff; font-size: 22px; cursor: pointer;
+  }
+
+  /* PIN lock screen */
+  .pin-screen {
+    position: fixed; inset: 0; z-index: 50; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; overflow-y: auto;
+  }
+  .pin-box { width: 100%; max-width: 340px; padding: 20px; text-align: center; }
+  .pin-icon { font-size: 44px; }
+  .pin-box h2 { margin: 8px 0 4px; font-size: 24px; }
+  .pin-dots { display: flex; justify-content: center; gap: 16px; margin: 20px 0 8px; }
+  .pin-dots span { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--brand); }
+  .pin-dots span.on { background: var(--brand); }
+  .pin-msg { min-height: 24px; color: var(--bad); font-weight: 700; margin-bottom: 8px; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .keypad button {
+    height: 64px; font: inherit; font-size: 28px; font-weight: 700; border-radius: 14px;
+    border: 2px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  .keypad button:active { background: #fff3ea; border-color: var(--brand); }
+  .keypad .blank { visibility: hidden; }
+  .pin-links { display: flex; justify-content: center; gap: 24px; margin-top: 16px; }
+  .linkbtn { background: none; border: 0; font: inherit; font-size: 16px; color: var(--brand-dark); text-decoration: underline; cursor: pointer; padding: 8px; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+
+  nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; background: #fff; border-top: 2px solid var(--line);
+    z-index: 10;
+  }
+  nav button {
+    flex: 1; border: 0; background: none; padding: 8px 2px 10px;
+    font: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+  }
+  nav button .ico { display: block; font-size: 24px; }
+  nav button.active { color: var(--brand); font-weight: 700; }
+
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  input, select {
+    font: inherit; padding: 12px; border: 2px solid var(--line);
+    border-radius: 10px; background: #fff; width: 100%;
+  }
+  input:focus, select:focus { outline: 3px solid #f3b793; border-color: var(--brand); }
+  .btn {
+    font: inherit; font-weight: 700; border: 0; border-radius: 10px;
+    padding: 12px 16px; cursor: pointer; background: var(--brand); color: #fff;
+    white-space: nowrap;
+  }
+  .btn.ghost { background: #fff; color: var(--brand); border: 2px solid var(--brand); }
+  .btn.danger { background: var(--bad); }
+  .btn.small { padding: 8px 12px; font-size: 16px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; }
+  .chip {
+    flex: none; border: 2px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 16px; cursor: pointer;
+  }
+  .chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+  h2.cat { font-size: 20px; margin: 24px 0 8px; color: var(--brand-dark); }
+  .card {
+    background: var(--card); border: 2px solid var(--line); border-radius: 14px;
+    padding: 14px; margin-bottom: 10px;
+  }
+  .card-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+  .name { font-size: 20px; font-weight: 700; }
+  .prices { color: var(--muted); font-size: 16px; margin-top: 2px; }
+  .badge {
+    font-size: 14px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .badge.ok { background: var(--good-bg); color: var(--good); }
+  .badge.low { background: var(--warn-bg); color: var(--warn); }
+  .badge.out { background: var(--bad-bg); color: var(--bad); }
+  .badge.spoil { background: var(--warn-bg); color: var(--warn); }
+  .profit-box {
+    background: var(--good-bg); color: var(--good); border-radius: 10px;
+    padding: 10px 12px; margin-top: 10px; font-size: 17px;
+  }
+  .profit-box.loss { background: var(--bad-bg); color: var(--bad); }
+  .profit-box div + div { margin-top: 2px; }
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+
+  /* modal */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 20;
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .sheet {
+    background: #fff; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 18px;
+  }
+  .sheet h3 { margin: 0 0 12px; font-size: 22px; }
+  label { display: block; font-weight: 700; margin: 12px 0 4px; font-size: 16px; }
+  label small { font-weight: 400; color: var(--muted); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .live-calc { margin-top: 14px; }
+  .sheet-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .sheet-actions .btn { flex: 1; }
+
+  .backup-note {
+    background: var(--warn-bg); color: var(--warn); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px; font-weight: 700;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+
+  /* home screen */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat {
+    background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 14px;
+  }
+  .stat.wide { grid-column: 1 / -1; background: var(--brand); border-color: var(--brand); color: #fff; }
+  .stat.span2 { grid-column: 1 / -1; }
+  .stat .label { font-size: 16px; }
+  .stat .num { font-size: 34px; font-weight: 700; line-height: 1.15; margin-top: 4px; }
+  .stat.profit .num { color: var(--good); }
+  .stat.profit.loss .num { color: var(--bad); }
+  .stat.spoil .num { color: var(--warn); }
+  .alerts-title { font-size: 20px; margin: 24px 0 8px; }
+  .alert-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: #fff; border: 2px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 8px;
+  }
+  .alert-row .aname { font-weight: 700; }
+  .all-good {
+    background: var(--good-bg); color: var(--good); border-radius: 12px;
+    padding: 16px; font-weight: 700; text-align: center;
+  }
+  .sell-now { width: 100%; margin-top: 16px; font-size: 20px; padding: 16px; }
+
+  /* reports screen */
+  .rank-row {
+    display: flex; gap: 12px; align-items: center;
+    background: #fff; border: 2px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 8px;
+  }
+  .rank-no {
+    flex: none; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rank-row.voided { background: #f1ece3; opacity: .7; }
+  .rank-row.voided .aname { text-decoration: line-through; }
+  .rank-row.loss { border-color: #e9c27a; background: #fffaf0; }
+  .rank-row.loss.voided { background: #f1ece3; }
+  .rank-info { flex: 1; min-width: 0; }
+  .rank-info .aname { overflow-wrap: anywhere; }
+  .rank-money { text-align: right; font-size: 15px; color: var(--muted); }
+  .rank-money b { color: var(--good); font-size: 17px; }
+
+  /* sell screen */
+  .sell-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sell-item {
+    font: inherit; text-align: left; background: #fff; color: var(--ink);
+    border: 2px solid var(--line); border-radius: 14px; padding: 12px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 4px; min-height: 96px;
+  }
+  .sell-item:active { border-color: var(--brand); background: #fff3ea; }
+  .sell-item .sname { font-weight: 700; font-size: 17px; line-height: 1.2; }
+  .sell-item .sprice { font-size: 22px; font-weight: 700; color: var(--brand-dark); margin-top: auto; }
+  .sell-item .sprice small { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .sell-item .sstock { font-size: 14px; color: var(--muted); }
+  .sell-item.low .sstock { color: var(--warn); font-weight: 700; }
+  .sell-item:disabled { opacity: .45; cursor: not-allowed; }
+  .qty-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .qty-row button { flex: none; width: 56px; height: 56px; font-size: 28px; padding: 0; }
+  .qty-row input { min-width: 0; text-align: center; font-size: 28px; font-weight: 700; height: 56px; }
+  .sell-total { font-size: 26px; font-weight: 700; margin-top: 14px; }
+  .sell-warn { color: var(--bad); font-weight: 700; margin-top: 12px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
+    background: var(--good); color: #fff; padding: 12px 18px; border-radius: 12px;
+    font-weight: 700; z-index: 30; display: none; max-width: 90vw; text-align: center;
+  }
+
+  .placeholder { text-align: center; padding: 60px 16px; color: var(--muted); }
+  .placeholder .big { font-size: 56px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="storeTitle">🏪 Tindahan Ko</h1>
+  <button class="lock-btn" id="lockBtn" aria-label="Lock the app" hidden>🔒</button>
+</header>
+<main id="view"></main>
+
+<nav id="nav"></nav>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <h3 id="sheetTitle">Add product</h3>
+    <label for="fName">Product name</label>
+    <input id="fName" placeholder="e.g. Kamatis (Tomato)" autocomplete="off">
+
+    <div class="row2">
+      <div>
+        <label for="fCat">Category</label>
+        <select id="fCat"></select>
+      </div>
+      <div>
+        <label for="fUnit">Sold per</label>
+        <select id="fUnit"></select>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label for="fCost">Cost price <small id="lblCost">(magkano binili)</small></label>
+        <input id="fCost" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00">
+      </div>
+      <div>
+        <label for="fSell">Selling price <small id="lblSell">(magkano ibinebenta)</small></label>
+        <input id="fSell" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label for="fStock">Stock on hand <small id="lblStock"></small></label>
+        <input id="fStock" type="number" inputmode="decimal" min="0" step="any" placeholder="0">
+      </div>
+      <div>
+        <label for="fLow">Alert me at <small id="lblLow">(low stock)</small></label>
+        <input id="fLow" type="number" inputmode="decimal" min="0" step="any" value="5">
+      </div>
+    </div>
+
+    <div class="live-calc" id="liveCalc"></div>
+
+    <div class="sheet-actions">
+      <button class="btn ghost" id="btnCancel">Cancel</button>
+      <button class="btn" id="btnSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="sellOverlay">
+  <div class="sheet">
+    <h3 id="sellName"></h3>
+    <div id="sellInfo" class="prices"></div>
+    <label for="sQty" id="lblSQty">How many sold?</label>
+    <div class="qty-row">
+      <button class="btn ghost" id="qMinus" aria-label="Less">−</button>
+      <input id="sQty" type="number" inputmode="numeric" min="0" step="1" value="1">
+      <button class="btn ghost" id="qPlus" aria-label="More">+</button>
+    </div>
+    <div id="sellCalc"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="sellCancel">Cancel</button>
+      <button class="btn" id="sellConfirm">Confirm sale</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="restockOverlay">
+  <div class="sheet">
+    <h3 id="restockName"></h3>
+    <div id="restockInfo" class="prices"></div>
+    <label for="rQty" id="lblRQty">How many did you buy?</label>
+    <input id="rQty" type="number" inputmode="decimal" min="0" step="any">
+    <div id="restockCalc" class="sell-total"></div>
+    <div id="restockNote" class="prices"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="restockCancel">Cancel</button>
+      <button class="btn" id="restockConfirm">✓ Restocked</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="voidOverlay">
+  <div class="sheet">
+    <h3 id="voidName"></h3>
+    <div id="voidInfo" class="prices"></div>
+    <label for="vReason">Why?</label>
+    <select id="vReason">
+      <option>Wrong item</option>
+      <option>Wrong quantity</option>
+      <option>Wrong price</option>
+      <option>Customer returned it</option>
+      <option>Other</option>
+    </select>
+    <label for="vNote">Note <small>(optional)</small></label>
+    <input id="vNote" placeholder="e.g. sold kangkong, not pechay" autocomplete="off">
+    <div class="sheet-actions">
+      <button class="btn ghost" id="voidCancel">Keep sale</button>
+      <button class="btn danger" id="voidConfirm">Void sale</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="spoilOverlay">
+  <div class="sheet">
+    <h3 id="spoilName"></h3>
+    <div id="spoilInfo" class="prices"></div>
+    <label for="spQty" id="lblSpQty">How much spoiled?</label>
+    <input id="spQty" type="number" inputmode="decimal" min="0" step="any">
+    <label for="spReason">Why?</label>
+    <select id="spReason">
+      <option>Nabulok (rotten)</option>
+      <option>Nalanta (wilted)</option>
+      <option>Nasira (damaged)</option>
+      <option>Other</option>
+    </select>
+    <label for="spNote">Note <small>(optional)</small></label>
+    <input id="spNote" placeholder="e.g. rain, left out overnight" autocomplete="off">
+    <div id="spoilCalc" class="sell-total"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="spoilCancel">Cancel</button>
+      <button class="btn danger" id="spoilConfirm">Remove from stock</button>
+    </div>
+  </div>
+</div>
+<div class="pin-screen" id="pinOverlay" hidden>
+  <div class="pin-box">
+    <div class="pin-icon">🔒</div>
+    <h2 id="pinTitle"></h2>
+    <div id="pinSub" class="prices"></div>
+    <div class="pin-dots" id="pinDots" aria-hidden="true"></div>
+    <div class="pin-msg" id="pinMsg" role="alert"></div>
+    <div class="keypad" id="keypad"></div>
+    <div class="pin-links">
+      <button class="linkbtn" id="pinCancel" hidden>Cancel</button>
+      <button class="linkbtn" id="pinForgot" hidden>Forgot PIN?</button>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "Tindahan Ko",
+  "short_name": "Tindahan",
+  "description": "Stock, sales and profit for a small store. Works offline; data stays on your phone.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf8ef",
+  "theme_color": "#c8501a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

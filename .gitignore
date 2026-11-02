@@ -1,0 +1,6 @@
+# Project notes and tool folders stay on this computer; only the app files are published.
+claude.md
+CLAUDE.md
+.claude/
+.impeccable/
+*.csv
