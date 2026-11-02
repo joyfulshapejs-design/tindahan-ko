@@ -165,6 +165,13 @@
   .meter.warn span { background: #d9822b; }
   .meter.bad span { background: var(--bad); }
 
+  .step {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-top: 1px solid var(--line);
+  }
+  .step.done { color: var(--good); font-weight: 700; }
+  .step .btn.danger { width: 100%; }
+
   /* home screen */
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat {

@@ -8,7 +8,7 @@
   var KEY_SETTINGS = "sari_settings_v1";
   var KEY_GUARD = "sari_pinguard_v1";       // wrong-PIN counter, so guessing gets slower
   var DAY_MS = 86400000;
-  var APP_VERSION = "3.1";                  // keep in step with CACHE in sw.js
+  var APP_VERSION = "3.2";                 // keep in step with CACHE in sw.js
   var STORAGE_LIMIT = 5000000;              // browsers allow roughly 5 MB of saved text per website
 
   var CATEGORIES = ["Vegetables", "Leafy Greens", "Roots & Spices", "Canned Goods", "Others"];
@@ -465,17 +465,16 @@
 
   function renderSettings() {
     $("view").onclick = null;
-    var last = settings.lastBackup
-      ? new Date(settings.lastBackup).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
-      : "Never";
+    var last = settings.lastBackup ? fmtWhen(settings.lastBackup) : "Never";
     $("view").innerHTML =
       '<div class="card"><h2 class="alerts-title" style="margin-top:0">🏪 Store name</h2>' +
         '<input id="setName" maxlength="40" value="' + esc(settings.storeName) + '">' +
         '<button class="btn" id="saveName" style="margin-top:10px">Save name</button></div>' +
       pinCardHtml() +
       storageCardHtml() +
+      '<div id="archiveCard">' + archiveCardHtml() + "</div>" +
       '<div class="card"><h2 class="alerts-title" style="margin-top:0">💾 Backup</h2>' +
-        '<div class="prices">Last backup: <b>' + esc(last) + "</b></div>" +
+        '<div class="prices" id="lastBackupLine">Last backup: <b>' + esc(last) + "</b></div>" +
         '<p>Saves your products, sales, spoilage and history in one file. Keep it somewhere safe, like sending it to yourself.</p>' +
         '<div class="card-actions"><button class="btn" id="btnExport">⬇ Download backup</button>' +
         '<button class="btn ghost" id="btnImport">⬆ Restore backup</button></div>' +
@@ -504,8 +503,16 @@
     $("view").onclick = function (e) {
       var b = e.target.closest("button[data-csv]");
       if (b) return exportCsv(b.dataset.csv);
+      var a = e.target.closest("button[data-arch]");
+      if (a) return archiveAction(a.dataset.arch);
       var p = e.target.closest("button[data-pin]");
       if (p) pinAction(p.dataset.pin);
+    };
+    $("view").onchange = function (e) {
+      if (e.target.id !== "archDays") return;
+      archiveDays = parseInt(e.target.value, 10) || 90;
+      archiveCsvKey = "";                    // a different cut-off needs a new spreadsheet
+      refreshArchive();
     };
   }
 
@@ -538,6 +545,112 @@
       (pct >= 80
         ? '<p style="color:var(--bad);font-weight:700">Almost full. Download a backup now. New sales may stop saving when it is full.</p>'
         : "") + "</div>";
+  }
+
+  /* ----- archive old sales: save a spreadsheet AND a full backup first, then remove ----- */
+  var ARCHIVE_PERIODS = [[30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
+  var BACKUP_FRESH_MS = 30 * 60 * 1000;
+  var archiveDays = 90;
+  var archiveCsvKey = "";     // which records the saved spreadsheet covers
+  var backupSavedAt = 0;      // when a full backup was last downloaded since the app was opened or restored
+
+  function fmtWhen(ts) {
+    return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function archiveSets() {
+    var cut = startOfDay(Date.now() - archiveDays * DAY_MS);
+    return {
+      cut: cut,
+      sales: sales.filter(function (s) { return s.ts < cut; }),
+      losses: losses.filter(function (l) { return l.ts < cut; })
+    };
+  }
+  function archiveKey(sets) {
+    var voided = function (list) { return list.filter(function (x) { return x.voided; }).length; };
+    return [sets.cut, sets.sales.length, sets.losses.length, voided(sets.sales), voided(sets.losses)].join(":");
+  }
+  function archiveRows(sets) {
+    var rows = [["Type", "Date", "Time", "Product", "Quantity", "Unit", "Price each", "Cost each", "Total sales", "Profit or loss", "Status", "Reason"]];
+    sets.sales.map(function (s) { return { sale: true, e: s }; })
+      .concat(sets.losses.map(function (l) { return { sale: false, e: l }; }))
+      .sort(function (a, b) { return a.e.ts - b.e.ts; })
+      .forEach(function (x) {
+        var e = x.e, d = csvDate(e.ts), per = unitOf(e).per;
+        rows.push(x.sale
+          ? ["Sale", d[0], d[1], e.name, e.qty, per, e.price, e.cost, e.price * e.qty, (e.price - e.cost) * e.qty, e.voided ? "VOIDED" : "Counted", e.voidReason || ""]
+          : ["Spoilage", d[0], d[1], e.name, e.qty, per, "", e.cost, "", -e.cost * e.qty, e.voided ? "UNDONE" : "Counted", e.reason || ""]);
+      });
+    return rows;
+  }
+
+  function archiveCardHtml() {
+    var sets = archiveSets();
+    var n = sets.sales.length + sets.losses.length;
+    var csvDone = n > 0 && archiveCsvKey === archiveKey(sets);
+    var backupDone = backupSavedAt > 0 && Date.now() - backupSavedAt <= BACKUP_FRESH_MS;
+    var label = ARCHIVE_PERIODS.filter(function (p) { return p[0] === archiveDays; })[0][1];
+    var opts = ARCHIVE_PERIODS.map(function (p) {
+      return '<option value="' + p[0] + '"' + (p[0] === archiveDays ? " selected" : "") + ">" + p[1] + "</option>";
+    }).join("");
+    var html = '<div class="card"><h2 class="alerts-title" style="margin-top:0">📦 Archive old sales</h2>' +
+      "<p>Free up space by saving old sales and spoilage to a spreadsheet, then removing them from the app. Your products, stock and recent records stay.</p>" +
+      '<label for="archDays">Archive records older than</label><select id="archDays">' + opts + "</select>";
+    if (!n) {
+      html += '<div class="prices" style="margin-top:10px">Nothing older than ' + label + " yet.</div>";
+    } else {
+      var freed = JSON.stringify(sets.sales).length + JSON.stringify(sets.losses).length;
+      html += '<div class="prices" style="margin:10px 0">' + sets.sales.length + " sales and " + sets.losses.length +
+        " spoilage entries before " + esc(new Date(sets.cut).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })) +
+        ". Removing them frees about " + fmtSize(freed) + ".</div>" +
+        '<div class="step' + (csvDone ? " done" : "") + '"><span>' + (csvDone ? "✓" : "1.") + " Save the archive spreadsheet</span>" +
+          '<button class="btn small ghost" data-arch="csv">⬇ Download</button></div>' +
+        '<div class="step' + (backupDone ? " done" : "") + '"><span>' + (backupDone ? "✓" : "2.") + " Save a full backup</span>" +
+          '<button class="btn small ghost" data-arch="backup">⬇ Download</button></div>' +
+        '<div class="step"><button class="btn danger" data-arch="remove"' + (csvDone && backupDone ? "" : " disabled") + ">3. Remove " + n + " old records</button></div>" +
+        (csvDone && backupDone ? "" : '<div class="prices">The remove button unlocks after steps 1 and 2.</div>');
+    }
+    return html + "</div>";
+  }
+  function refreshArchive() {
+    var el = $("archiveCard");
+    if (el) el.innerHTML = archiveCardHtml();
+  }
+  function refreshSettingsBits() {
+    var line = $("lastBackupLine");
+    if (line) line.innerHTML = "Last backup: <b>" + esc(fmtWhen(settings.lastBackup)) + "</b>";
+    refreshArchive();
+  }
+
+  function archiveAction(what) {
+    var sets = archiveSets();
+    var n = sets.sales.length + sets.losses.length;
+    if (what === "backup") return exportBackup();
+    if (!n) return refreshArchive();
+    if (what === "csv") {
+      downloadCsv(archiveRows(sets), "tindahan-archive-" + dateStamp() + ".csv");
+      archiveCsvKey = archiveKey(sets);
+      refreshArchive();
+      toast("✓ Archive spreadsheet downloaded");
+      return;
+    }
+    if (what !== "remove") return;
+    var ready = archiveCsvKey === archiveKey(sets) && backupSavedAt > 0 && Date.now() - backupSavedAt <= BACKUP_FRESH_MS;
+    if (!ready) {                                // e.g. the 30-minute backup window ran out
+      refreshArchive();
+      toast("Please save the spreadsheet and a fresh backup first.");
+      return;
+    }
+    if (!confirm("Remove " + n + " old records from the app?\n\nCheck that the spreadsheet and the backup file are saved somewhere safe. Only the backup file can bring them back.")) return;
+    var cut = sets.cut, freed = JSON.stringify(sets.sales).length + JSON.stringify(sets.losses).length;
+    sales = sales.filter(function (s) { return s.ts >= cut; });
+    losses = losses.filter(function (l) { return l.ts >= cut; });
+    save(KEY_SALES, sales);
+    save(KEY_LOSSES, losses);
+    archiveCsvKey = "";
+    var y = window.scrollY;
+    renderSettings();
+    window.scrollTo(0, y);
+    toast("✓ Removed " + n + " old records, freed about " + fmtSize(freed));
   }
 
   /* ----- spreadsheet export (CSV) ----- */
@@ -575,20 +688,26 @@
         return [d[0], d[1], l.name, l.qty, unit(l), l.cost, l.cost * l.qty, l.reason || "", l.voided ? "UNDONE" : "Counted"];
       }));
   }
-  function exportCsv(kind) {
-    var rows = csvRows(kind);
+  function dateStamp() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function downloadCsv(rows, fileName) {
     // The leading BOM makes Excel show ₱ and Filipino letters correctly.
     var text = "﻿" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
     var blob = new Blob([text], { type: "text/csv;charset=utf-8" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
-    var d = new Date();
     a.href = url;
-    a.download = "tindahan-" + kind + "-" + d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + ".csv";
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  function exportCsv(kind) {
+    var rows = csvRows(kind);
+    downloadCsv(rows, "tindahan-" + kind + "-" + dateStamp() + ".csv");
     toast(rows.length > 1 ? "✓ Spreadsheet downloaded" : "Downloaded — nothing recorded yet, only the headings");
   }
 
@@ -609,8 +728,9 @@
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     settings.lastBackup = Date.now();
+    backupSavedAt = Date.now();
     save(KEY_SETTINGS, settings);
-    renderSettings();
+    refreshSettingsBits();
     toast("✓ Backup downloaded");
   }
 
@@ -654,6 +774,8 @@
       });
       sales = data.sales;
       losses = data.losses || [];
+      backupSavedAt = 0;                         // the data changed, so an earlier backup no longer counts
+      archiveCsvKey = "";
       var name = data.settings && typeof data.settings.storeName === "string" ? data.settings.storeName.trim() : "";
       settings = { storeName: name || "Tindahan Ko", lastBackup: settings.lastBackup, pin: settings.pin };
       save(KEY_PRODUCTS, products);
@@ -672,6 +794,8 @@
     products = makeSeedProducts();
     sales = [];
     losses = [];
+    backupSavedAt = 0;
+    archiveCsvKey = "";
     save(KEY_PRODUCTS, products);
     save(KEY_SALES, sales);
     save(KEY_LOSSES, losses);

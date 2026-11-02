@@ -1,7 +1,7 @@
 // Keeps the app working with no signal. Files are fetched fresh whenever there is a connection,
 // so updates show up on their own; the saved copy is only used when the fetch fails.
 // Change CACHE when the app changes (and keep APP_VERSION in app.js in step).
-var CACHE = "tindahan-v3.1";
+var CACHE = "tindahan-v3.2";
 var FILES = [
   "./", "index.html", "app.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"
